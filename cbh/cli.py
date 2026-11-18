@@ -438,18 +438,24 @@ def write_recon_summary(target: str, subs: set[str], resolved: dict, live: list,
 # ============================================================
 PRODUCER = "cbh-recon/2.1.0"
 
-# subdomain keywords → triage priority + rationale for ranked_surface
-_P1_HINTS = ("api.", "api-", "graphql", "auth.", "sso.", "login.", "account.",
-             "admin.", "internal.", "intranet.", "staging.", "stage.", "dev.",
-             "test.", "uat.", "qa.", "gateway.", "gw.", "vpn.", "portal.")
-_KILL_HINTS = ("cdn.", "static.", "assets.", "img.", "images.", "media.", "fonts.")
+# Subdomain hints are matched per DNS label, not as raw substrings: the old
+# `"test." in host` test ranked contest.example.com and latest.example.com as P1
+# "non-prod", while a real api. host still ranks P1.
+_P1_LABELS = {"api", "graphql", "auth", "sso", "login", "account", "admin",
+              "internal", "intranet", "staging", "stage", "dev", "test",
+              "uat", "qa", "gateway", "gw", "vpn", "portal"}
+_P1_LABEL_PREFIXES = ("api-", "auth-", "dev-", "test-", "stage-", "staging-",
+                      "uat-", "qa-", "portal-")
+_KILL_LABELS = {"cdn", "static", "assets", "img", "images", "media", "fonts"}
 
 
 def _rank_host(host: str) -> tuple[str, str]:
-    h = host.lower()
-    if any(k in h for k in _P1_HINTS):
+    labels = host.lower().rstrip(".").split(".")
+    if len(labels) > 1:          # the TLD is not a service label: example.dev is not "dev"
+        labels = labels[:-1]
+    if any(label in _P1_LABELS or label.startswith(_P1_LABEL_PREFIXES) for label in labels):
         return "P1", "high-value surface (api/auth/admin/non-prod)"
-    if any(h.startswith(k) for k in _KILL_HINTS):
+    if labels and labels[0] in _KILL_LABELS:
         return "KILL", "static/CDN host — low yield"
     return "P2", "standard web surface"
 

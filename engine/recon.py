@@ -81,6 +81,19 @@ def _testable(item):
         item.get("source") == "form" or bool(item.get("param"))
 
 
+def _in_scope_seed(scope, seed, log):
+    """Scope gate for every recon entry point that touches the network.
+
+    `spa_recon` skipped out-of-scope seeds from the start; platform/openapi/gau/katana
+    did not, so a seed outside the scope file still produced live requests. Scope is a
+    hard boundary — ask here before the first packet leaves.
+    """
+    if scope.in_scope_host(seed):
+        return True
+    log(f"recon: seed {seed} not in scope — skip")
+    return False
+
+
 def _mine(text, found_rel, found_abs, base=""):
     # found_rel stores (base, relpath) so each route is later resolved against the
     # document it was mined from — not a single shared seed origin (fixes multi-seed).
@@ -332,6 +345,8 @@ def _gau_urls(scope, log):
         return {}
     apexes = set()
     for s in scope.seeds:
+        if not _in_scope_seed(scope, s, log):
+            continue
         h = urlparse(s if "://" in s else "//" + s).hostname
         if h:
             apexes.add(".".join(h.split(".")[-2:]))
@@ -358,6 +373,8 @@ def _katana_urls(scope, log, depth=2, timeout=150):
         return {}
     urls, crawled = {}, 0
     for seed in scope.seeds:
+        if not _in_scope_seed(scope, seed, log):
+            continue
         try:
             out = subprocess.run(["katana", "-u", seed, "-silent", "-jc", "-d", str(depth),
                                   "-kf", "all", "-c", "10", "-timeout", "10", "-rl", "100"],
@@ -521,8 +538,12 @@ def platform_recon(scope, log=print):
     from urllib.parse import urlparse
     items, seen = [], set()
     for seed in scope.seeds:
+        if not _in_scope_seed(scope, seed, log):
+            continue
         u = urlparse(seed if "://" in seed else "https://" + seed)
-        base = f"{u.scheme or 'https'}://{u.hostname}"
+        # Keep an explicit port (and IPv6 brackets). The old f"{u.hostname}" form
+        # dropped ":8443" and silently probed the default 80/443 instead.
+        base = f"{u.scheme or 'https'}://{u.netloc.rsplit('@', 1)[-1]}"
         if base in seen:
             continue
         seen.add(base)
@@ -571,6 +592,8 @@ def openapi_recon(scope, log=print, *, allow_intrusive=False):
     import json as _json
     items = []
     for seed in scope.seeds:
+        if not _in_scope_seed(scope, seed, log):
+            continue
         host = seed.rstrip("/")
         if "://" not in host:
             host = "https://" + host

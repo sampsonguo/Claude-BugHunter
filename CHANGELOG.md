@@ -49,6 +49,16 @@ versioning is loosely [SemVer](https://semver.org/) at the bundle level.
   remain Claude-Code-only. New guide: `docs/multi-harness.md`.
 
 ### Fixed
+- **Recon seeds are scope-gated at every entry point.** `platform_recon`, `openapi_recon`,
+  `_katana_urls`, `_gau_urls` and the engine's `probe_hosts` hand-off iterated `scope.seeds`
+  without an `in_scope_host` check, so a seed outside the scope file still received live
+  traffic (`spa_recon` was the only path that skipped it). All entry points now share one gate
+  and log the skip — verified against a local out-of-scope seed: 0 requests (was 7 OpenAPI probes).
+- **`platform_recon` keeps an explicit port.** Building the probe base from `u.hostname`
+  dropped `:8443` and silently probed the default 80/443 instead.
+- **Surface ranking matches DNS labels, not substrings.** `"test." in host` ranked
+  `contest.`/`latest.` as P1 "non-prod", and the `.test`/`.dev` TLDs did the same for every
+  host under them. `api.`/`auth.`/`dev.` still rank P1; `static.`/`cdn.` still rank KILL.
 - `hunt-clickjacking`, `hunt-html-injection`: quoted the `description` — an unquoted `: ` (`Targets:`,
   `surfaces:`) broke strict YAML / Codex. Also genericized lab/harness-specific language in the new
   skills for cross-harness portability.

@@ -49,6 +49,21 @@ ALL_PHASES = ["recon", "rank", "map", "hunt", "validate", "report"]
 DEFAULT_PHASES = ["recon", "rank", "map"]
 
 
+def _in_scope_seed_hosts(scope):
+    """Hostnames of scope-cleared seeds, for active probing.
+
+    `recon` handed every seed host to probe_hosts before any scope check, so a seed
+    outside the scope file still received traffic from the engine.
+    """
+    from urllib.parse import urlparse
+    hosts = set()
+    for seed in scope.seeds:
+        host = urlparse(seed).hostname
+        if host and scope.in_scope_host(host):
+            hosts.add(host)
+    return sorted(hosts)
+
+
 class Engine:
     def __init__(self, scope_path, base, model, max_hunts, max_turns, timeout, mock=False,
                  allow_intrusive=False, parallel=3, expand=False, use_memory=False):
@@ -138,9 +153,8 @@ class Engine:
         if self.expand:
             self._expand_scope()
         import recon as R, osint as O  # deterministic recon: service/tech + endpoints + secrets + params
-        from urllib.parse import urlparse
         # service / tech fingerprint of the seed target(s) — per-target (NOT subdomain enum)
-        seed_hosts = sorted({urlparse(s).hostname for s in self.scope.seeds if urlparse(s).hostname})
+        seed_hosts = _in_scope_seed_hosts(self.scope)
         tech, _ = O.probe_hosts(seed_hosts, log=self.eng.log)
         self.eng.state["targets"] = tech
         self.eng.save()
